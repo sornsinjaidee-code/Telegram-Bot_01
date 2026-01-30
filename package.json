@@ -1,4 +1,11 @@
 {
+  "name": "tm-voucher-sniper",
+  "version": "1.0.0",
+  "description": "TrueMoney Voucher Sniper by Gemini",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
   "dependencies": {
     "telegram": "^2.22.2",
     "axios": "^1.7.9",
@@ -7,6 +14,10 @@
     "jimp": "^0.22.10",
     "jsqr": "^1.4.0",
     "dotenv": "^16.3.1",
+    "input": "^1.0.1",
     "@fortune-inc/tw-voucher": "latest"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
