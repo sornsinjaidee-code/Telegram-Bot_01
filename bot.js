@@ -63,8 +63,6 @@ app.get('/', (req, res) => {
         <div class="note">4. คัดลอก <strong>api_id</strong> และ <strong>api_hash</strong></div>
       </div>
       
-      
-
       <div class="step">
         <span class="step-num">2</span>
         <strong>กรอกข้อมูลด้านล่าง</strong>
@@ -90,10 +88,6 @@ app.get('/', (req, res) => {
         <label class="label">📝 ชื่อกระเป๋า (ไม่บังคับ)</label>
         <input type="text" name="walletName" placeholder="กระเป๋าหลัก">
         
-        <label class="label">🔔 Discord Webhook URL</label>
-        <input type="text" name="webhookUrl" placeholder="https://discord.com/api/webhooks/...">
-        <div class="note">สำหรับแจ้งเตือนเมื่อรับซองสำเร็จ (ปล่อยว่างได้)</div>
-
         <button type="submit">✅ บันทึกและเริ่มใช้งาน</button>
       </form>
       
@@ -164,16 +158,14 @@ app.post('/save-config', async (req, res) => {
     apiHash: req.body.apiHash,
     phoneNumber: req.body.phoneNumber,
     walletNumber: req.body.walletNumber,
-    walletName: req.body.walletName || "กระเป๋าหลัก",
-    webhookUrl: req.body.webhookUrl // เพิ่มบรรทัดนี้
+    walletName: req.body.walletName || "กระเป๋าหลัก"
   };
   
   const envContent = `API_ID=${CONFIG.apiId}
 API_HASH=${CONFIG.apiHash}
 PHONE_NUMBER=${CONFIG.phoneNumber}
 WALLET_NUMBER=${CONFIG.walletNumber}
-WALLET_NAME=${CONFIG.walletName}
-WEBHOOK_URL=${CONFIG.webhookUrl || ''}`; // เพิ่มบรรทัดนี้
+WALLET_NAME=${CONFIG.walletName}`;
   
   fs.writeFileSync('.env', envContent);
   
@@ -301,62 +293,36 @@ const recentSeen = new Set();
 // ========================================
 // ⚡ ฟังก์ชันหลัก: ใช้ tw-voucher แทน Proxy
 // ========================================
-async function sendWebhookNotification(amount, voucher, speed) {
-    const webhookUrl = CONFIG.webhookUrl;
-    if (!webhookUrl || !webhookUrl.startsWith('http')) return;
-
-    const data = {
-        embeds: [{
-            title: "✅ รับซอง TrueMoney สำเร็จ",
-            color: 3066993, // สีเขียว
-            fields: [
-                { name: "💵 จำนวนเงิน", value: `**${amount.toFixed(2)}** บาท`, inline: true },
-                { name: "💰 ยอดเงินสะสม", value: `**${totalAmount.toFixed(2)}** บาท`, inline: true },
-                { name: "⚡ ความเร็ว", value: `**${speed}**ms`, inline: false },
-                { name: "📱 แหล่งที่มา", value: "Webhook Bot", inline: true },
-                { name: "🔗 ลิงก์", value: `https://gift.truemoney.com/campaign/?v=${voucher}`, inline: false }
-            ],
-            footer: { text: `⚡ ดักซองไว • วันนี้ เวลา ${new Date().toLocaleTimeString('th-TH')}` }
-        }]
-    };
-
-    try {
-        await axios.post(webhookUrl, data);
-    } catch (err) {
-        console.error("❌ Webhook Error:", err.message);
-    }
-}
-
 async function processVoucher(voucher) {
-    if (recentSeen.has(voucher)) return;
-    recentSeen.add(voucher);
-    setTimeout(() => recentSeen.delete(voucher), 30000);
+  if (recentSeen.has(voucher)) return;
+  recentSeen.add(voucher);
+  setTimeout(() => recentSeen.delete(voucher), 30000);
+  
+  console.log(`📥 ${voucher}`);
+  
+  const phone = CONFIG.walletNumber.replace(/\s/g, '');
+  const voucherUrl = `https://gift.truemoney.com/campaign/?v=${voucher}`;
+  
+  try {
+    // ========================================
+    // 🔥 เรียก tw-voucher โดยตรง (ไม่ผ่าน Proxy)
+    // ========================================
+    const result = await twvoucher(phone, voucherUrl);
     
-    const startTime = Date.now();
-    const phone = CONFIG.walletNumber.replace(/\s/g, '');
-    const voucherUrl = `https://gift.truemoney.com/campaign/?v=${voucher}`;
-    
-    try {
-        const result = await twvoucher(phone, voucherUrl);
-        const speed = Date.now() - startTime;
-        
-        if (result && result.amount) {
-            const amount = parseFloat(result.amount);
-            totalClaimed++;
-            totalAmount += amount;
-            
-            console.log(`✅ [${speed}ms] +${amount}฿`);
-            await sendWebhookNotification(amount, voucher, speed);
-        } else {
-            totalFailed++;
-            console.log(`❌ ${result?.message || 'Failed'}`);
-        }
-    } catch (err) {
-        totalFailed++;
-        console.log(`❌ ${err.message}`);
+    if (result && result.amount) {
+      const amount = parseFloat(result.amount);
+      totalClaimed++;
+      totalAmount += amount;
+      console.log(`✅ +${amount}฿`);
+    } else {
+      totalFailed++;
+      console.log(`❌ ${result?.message || 'Failed'}`);
     }
-} 
-
+  } catch (err) {
+    totalFailed++;
+    console.log(`❌ ${err.message}`);
+  }
+}
 
 async function startBot() {
   if (!CONFIG) return;
@@ -463,22 +429,16 @@ async function startBot() {
   console.log("✅ Bot ready!\n");
 }
 
-// ... (โค้ดส่วนบนทั้งหมดคงเดิมจนถึงบรรทัดสุดท้าย)
-
 if (fs.existsSync('.env')) {
-    require('dotenv').config();
-    if (process.env.API_ID && process.env.API_HASH) {
-        CONFIG = {
-            apiId: parseInt(process.env.API_ID),
-            apiHash: process.env.API_HASH,
-            phoneNumber: process.env.PHONE_NUMBER,
-            walletNumber: process.env.WALLET_NUMBER,
-            walletName: process.env.WALLET_NAME || "กระเป๋าหลัก",
-            webhookUrl: process.env.WEBHOOK_URL // ดึงค่าจาก env ถ้ามี
-        };
-        startBot();
-    }
-} else {
-    // เพิ่มส่วนนี้เพื่อให้ Express ทำงานแม้ไม่มีไฟล์ .env เพื่อให้ผู้ใช้กรอกข้อมูลผ่านหน้าเว็บได้
-    console.log("🌐 ไม่พบไฟล์ .env กรุณาตั้งค่าผ่านหน้าเว็บ: http://localhost:10000");
-}
+  require('dotenv').config();
+  if (process.env.API_ID && process.env.API_HASH) {
+    CONFIG = {
+      apiId: parseInt(process.env.API_ID),
+      apiHash: process.env.API_HASH,
+      phoneNumber: process.env.PHONE_NUMBER,
+      walletNumber: process.env.WALLET_NUMBER,
+      walletName: process.env.WALLET_NAME || "กระเป๋าหลัก"
+    };
+    startBot();
+  }
+  }
